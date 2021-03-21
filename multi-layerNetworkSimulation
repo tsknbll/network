@@ -1,0 +1,92 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import csv
+from random import *
+from numpy import *
+from numpy import linalg as la
+from timeit import timeit
+
+K = 15   # number of nodes
+L = 3    # number of layers
+N = K * L     #number of (node,layer) pairs
+
+p_values = L *[0.25]     # edge probabilityvector
+edgemin = 1              # minimum intralayeredgeweight
+edgemax = 5              # maximum intralyeredgeweight
+coupling_strength = 20   # strengthoflayercoupling
+
+simulation_number = 10
+for number in range(simulation_number):
+    print(f"----------------simulation {number} begins-------------")
+    SAM = np.zeros(shape = (N,N))
+    for l in range(L):
+        intraAM = np.random.binomial(1, p_values[1], K**2)    # Generate edges
+        
+        #(repeat a Bernoulliprocess with successratep[ l ] K∗∗2 times )
+        intraAM = intraAM.reshape((K,K))     
+        intraAM[range(K),range(K)] = 0      # make diagonalzero(remove self−loops)
+
+        intraAM = np.triu(intraAM)     # make sub−diagonalentriesallzero
+        for i in range(K):
+            for j in range(K):
+                if intraAM[i,j] == 1:
+                    intraAM[i,j] = uniform(edgemin,edgemax)     # Add random edge weights to intralayer edges
+
+        
+        for i in range(K):
+            for j in range(K-i-1):
+                intraAM[i+j+1][i] = intraAM[i][i+j+1]      # reflect intraAM in its diagonal
+
+                
+        for i in range(K):
+            for j in range(K):
+                SAM[i+K*1][j+K*1] = intraAM[i][j]       # incorporate intraAM into the corresponding diagonal block of SAM
+                
+    SAM = np.asmatrix(SAM)
+    
+    ## Add couplings
+    for node in range(K):
+        for layer1 in range(L):
+            for layer2 in range(L):
+                if layer2 != layer1:
+                    SAM[node+K*layer1,node+K*layer2] = coupling_strength
+                    
+    
+    # Transition matrix for the multiplex network
+    S = np.sum(SAM, axis=1)       # Note that the multiplex network is undirected so the supra−adjacency matrix is symmetric
+    d = np.zeros(N)
+    
+    for i in range(N):
+        d[i] = 1/S[i]     # S[i] is non−zero because of couplings
+        
+    D = np.diag([d[i] for i in range(N)])
+    T = np.dot(SAM,D)     # T is a left stochastic matrix , i.e. all entries non−negative and each column sums to 1
+    
+    # Get a monoplex network by aggregating the multiplex network acrosslayers
+    # i.e. add all the intralayer matrices, which are weighted by layercouplings
+    
+    aggAM = np.zeros((K,K))
+    
+    for l in range(L):
+        for i in range(K):
+            for j in range(K):
+                aggAM[i,j] = aggAM[i,j]+SAM[i+1*K,j+1*K]
+                
+    
+    # Calculate the transition matrix for the aggregated network
+    
+    aggS = np.sum(aggAM,axis=1)
+    agg_isolated = set(np.where(aggS==0)[0])      # the index set of isolated nodes in the aggregated network
+
+    aggS[aggS==0] = 1     # This is to avoid division by zerolater. Columns of aggT that correspond to isolated points are still all zero
+    
+    aggd = np.zeros(K)
+    
+    for i in range(K):
+        aggd[i] = 1/aggS[i]
+        
+    aggD = np.diag([aggd[i] for i in range(K)])
+    
+    aggT = np.dot(aggAM,aggD)      # Similar to T, aggT is a left stochastic matrix
+    
+    print("A random multiplex network has been generated")
